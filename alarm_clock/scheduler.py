@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from .alarm import Alarm, Repeat
-from .store import Store
+from .store import State, Store
 
 # weekday() values 0-4 are Mon-Fri.
 _LAST_WEEKDAY = 4
@@ -47,6 +47,7 @@ def run(
     sleep: Callable[[float], None] = time.sleep,
     now: Callable[[], datetime] = datetime.now,
     stop: Callable[[], bool] = lambda: False,
+    on_tick: Callable[[datetime, State], None] | None = None,
 ) -> None:
     """Poll once per second and fire due alarms until ``stop()`` is true.
 
@@ -54,14 +55,20 @@ def run(
     A ``once`` alarm is disabled and persisted after it fires. Each alarm fires
     at most once per minute (tracked by ``(id, minute)``).
 
-    Injectable ``sleep``/``now``/``stop`` make the loop testable.
+    Injectable ``sleep``/``now``/``stop`` make the loop testable. ``on_tick`` is
+    invoked once per iteration with the current minute and reloaded state (used
+    by the CLI to draw a live countdown).
     """
     last_fired: dict[str, datetime] = {}
 
     while not stop():
-        current = now().replace(second=0, microsecond=0)
+        raw = now()
+        current = raw.replace(second=0, microsecond=0)
         state = store.load()
         dirty = False
+
+        if on_tick is not None:
+            on_tick(raw, state)
 
         for alarm in state.alarms:
             if not alarm.enabled:
